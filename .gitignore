@@ -1,2 +1,9 @@
 venv
 logs
+__pycache__
+__init__.py
+*.pyc
+*.pyo
+*.pyd
+*.pyd
+*.pyd
