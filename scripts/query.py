@@ -13,13 +13,16 @@
 
 
 import logging
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.vectorstores import Chroma
-from langchain.chat_models import ChatOpenAI
-from langchain.chains import RetrievalQA
+import os
+from dotenv import load_dotenv
+from langchain_classic.chains import create_retrieval_chain
+from langchain_chroma import Chroma
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 logger = logging.getLogger(__name__)
+CHROMA_DIR = "data/chroma"
 
+load_dotenv()
 
 def query_rag(question: str):
     try:
@@ -28,7 +31,9 @@ def query_rag(question: str):
         embeddings = OpenAIEmbeddings()
 
         # Load the existing ChromaDB
-        chroma_client = Chroma(persist_directory="data/chroma", embedding_function=embeddings)
+        chroma_client = Chroma(
+            persist_directory="data/chroma", embedding_function=embeddings
+        )
 
         # Create a retriever from the DB
         retriever = chroma_client.as_retriever()
@@ -37,11 +42,13 @@ def query_rag(question: str):
         llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0.7)
 
         # Create a RetrievalQA chain
-        chain = RetrievalQA.from_chain_type(llm, retriever=retriever)
+        chain = create_retrieval_chain(llm, retriever=retriever)
 
         # Invoke the chain with the question and return the result
         result = chain.run(question)
-        return result
+        # normalize
+        return result if isinstance(result, str) else str(result)
     except Exception as e:
         logger.error(f"Error querying RAG: {e}")
-        return None
+        return f"Error querying RAG: {e}"
+

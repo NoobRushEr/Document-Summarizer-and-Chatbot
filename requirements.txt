@@ -5,5 +5,5 @@ python-dotenv
 langchain
 langchain-community
 langchain-openai
-pyPDF2
+pypdf2
 chromadb

@@ -9,31 +9,31 @@
 #    - Initialize `OpenAIEmbeddings`.
 #    - Store the chunks and embeddings in `ChromaDB` (persist it to disk).
 
+
+import logging
 import os
-from pypdf2 import PdfReader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.vectorstores import Chroma
+
+from langchain_chroma import Chroma
+from langchain_core.documents import Document
+from langchain_openai import OpenAIEmbeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from pypdf import PdfReader
 
 logger = logging.getLogger(__name__)
 
+CHROMA_DIR = "data/chroma"
+os.makedirs(CHROMA_DIR, exist_ok=True)
+
 
 def load_pdf(file_path: str):
-    try:
-        """Load a PDF document and return its text content."""
-        reader = PdfReader(file_path)
-        docs = []
-        for i, page in enumerate(reader.pages, 1):
-            docs.append({
-                "page_content": page.extract_text() or "",
-                "metadata": {"page": i}
-            })  
-        return docs
-    except Exception as e:
-        logger.error(f"Error loading PDF: {e}")
-        return None
-
-    
+    reader = PdfReader(file_path)
+    docs = []
+    for i, page in enumerate(reader.pages, 1):
+        text = page.extract_text() or ""
+        docs.append(
+            Document(page_content=text, metadata={"page": i, "source": file_path})
+        )
+    return docs
 
 
 def ingest_document(file_path: str):
@@ -43,21 +43,22 @@ def ingest_document(file_path: str):
         docs = load_pdf(file_path)
 
         # Split the text into chunks
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000, chunk_overlap=200
+        )
         chunks = text_splitter.split_documents(docs)
 
         # Initialize OpenAI embeddings
         embeddings = OpenAIEmbeddings()
 
         # Store the chunks and embeddings in ChromaDB
-        chroma_client = Chroma(persist_directory="data/chroma", embedding_function=embeddings)
-        chroma_client.aadd_documents(chunks)
+        chroma_client = Chroma(
+            persist_directory="data/chroma", embedding_function=embeddings
+        )
+        chroma_client.add_documents(chunks)
 
-        # Persist the ChromaDB to disk
-        chroma_client.persist()
+        logger.info("Ingested %d chunks from %s", len(chunks), file_path)
+        return {"success": True, "chunks": len(chunks), "source": file_path}
     except Exception as e:
-        logger.error(f"Error ingesting document: {e}")
-        return False
-    else:
-        logger.info(f"Document ingested successfully: {file_path}")
-        return True
+        logger.exception("Error ingesting document")
+        return {"success": False, "error": str(e)}
