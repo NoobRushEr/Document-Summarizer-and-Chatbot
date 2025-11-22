@@ -1,3 +1,6 @@
+.env
+*.env
+.env*
 venv
 logs
 data/*
@@ -8,4 +11,3 @@ __init__.py
 *.pyd
 *.pyd
 *.pyd
-.env

@@ -118,6 +118,7 @@ async def chat(payload: QuestionPayload = Body(...)):
         return {"success": True, "answer": answer_text}
     except Exception as e:
         logger.error(f"Error processing document: {e}")
+        print(f"Error processing document: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

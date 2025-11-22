@@ -61,4 +61,5 @@ def ingest_document(file_path: str):
         return {"success": True, "chunks": len(chunks), "source": file_path}
     except Exception as e:
         logger.exception("Error ingesting document")
+        print(f"Error ingesting document: {e}")
         return {"success": False, "error": str(e)}
