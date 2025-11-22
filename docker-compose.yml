@@ -1,0 +1,16 @@
+# Docker Compose
+# --------------
+# Orchestration for running Backend and Frontend services.
+
+# Implementation Checklist:
+# 1. Define `backend` service:
+#    - Build from current directory.
+#    - Map ports (8000:8000).
+#    - Mount volumes for persistence.
+# 2. Define `frontend` service:
+#    - Build from current directory.
+#    - Map ports (8501:8501).
+#    - Override command to run Streamlit.
+#    - Link to backend.
+
+
