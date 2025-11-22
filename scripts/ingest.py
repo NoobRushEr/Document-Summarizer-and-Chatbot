@@ -10,23 +10,41 @@
 #    - Store the chunks and embeddings in `ChromaDB` (persist it to disk).
 
 import os
-from langchain.document_loaders import PyPDFLoader
+from pypdf2 import PdfReader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.vectorstores import Chroma
 
 logger = logging.getLogger(__name__)
 
+
+def load_pdf(file_path: str):
+    try:
+        """Load a PDF document and return its text content."""
+        reader = PdfReader(file_path)
+        docs = []
+        for i, page in enumerate(reader.pages, 1):
+            docs.append({
+                "page_content": page.extract_text() or "",
+                "metadata": {"page": i}
+            })  
+        return docs
+    except Exception as e:
+        logger.error(f"Error loading PDF: {e}")
+        return None
+
+    
+
+
 def ingest_document(file_path: str):
     try:
         """Ingest a PDF document and store its embeddings in ChromaDB."""
         # Load the PDF document
-        loader = PyPDFLoader(file_path)
-        documents = loader.load()
+        docs = load_pdf(file_path)
 
         # Split the text into chunks
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-        chunks = text_splitter.split_documents(documents)
+        chunks = text_splitter.split_documents(docs)
 
         # Initialize OpenAI embeddings
         embeddings = OpenAIEmbeddings()
