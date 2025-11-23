@@ -12,6 +12,7 @@
 
 import logging
 import os
+import re
 
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
@@ -25,11 +26,30 @@ CHROMA_DIR = "data/chroma"
 os.makedirs(CHROMA_DIR, exist_ok=True)
 
 
+def clean_text(text: str) -> str:
+    """
+    Optional: Removes headers, footers, or excessive whitespace.
+
+    Args:
+        text (str): The text to clean.
+
+    Returns:
+        str: The cleaned text.
+    """
+    # Replace multiple newlines with a single space to keep paragraphs flowy
+    text = re.sub(r"\n+", " ", text)
+    # Remove multiple spaces
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
 def load_pdf(file_path: str):
     reader = PdfReader(file_path)
     docs = []
     for i, page in enumerate(reader.pages, 1):
         text = page.extract_text() or ""
+        text = clean_text(text)
+
         docs.append(
             Document(page_content=text, metadata={"page": i, "source": file_path})
         )
@@ -37,14 +57,21 @@ def load_pdf(file_path: str):
 
 
 def ingest_document(file_path: str):
+    """Ingest a PDF document and store its embeddings in ChromaDB.
+
+    Args:
+        file_path (str): The path to the PDF file to ingest.
+
+    Returns:
+        dict: A dictionary containing the success status and other information.
+    """
     try:
-        """Ingest a PDF document and store its embeddings in ChromaDB."""
         # Load the PDF document
         docs = load_pdf(file_path)
 
         # Split the text into chunks
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000, chunk_overlap=200
+            chunk_size=1000, chunk_overlap=200, separators=["\n\n", "\n", ".", " ", ""]
         )
         chunks = text_splitter.split_documents(docs)
 

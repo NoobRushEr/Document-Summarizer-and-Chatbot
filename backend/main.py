@@ -18,9 +18,11 @@ import hashlib
 import json
 import logging
 import os
-import shutil
+from typing import Optional
 
 from fastapi import Body, FastAPI, File, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from scripts.ingest import ingest_document
@@ -28,11 +30,24 @@ from scripts.query import query_rag
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
+app = FastAPI(title="RAG Backend API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class QuestionPayload(BaseModel):
     question: str
+
+
+class SummaryPayload(BaseModel):
+    # Optional because for summarization we might not need a user question
+    focus_area: Optional[str] = None
 
 
 UPLOAD_DIR = "data/uploads"
@@ -61,6 +76,14 @@ def _sha256_bytes(b: bytes) -> str:
 
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
+    """Upload a PDF file and return its metadata.
+
+    Args:
+        file (UploadFile): The PDF file to upload.
+
+    Returns:
+        dict: A dictionary containing the metadata of the uploaded file.
+    """
     if not file or not file.filename:
         raise HTTPException(status_code=400, detail="No file uploaded")
 
@@ -99,9 +122,9 @@ async def upload_file(file: UploadFile = File(...)):
         await file.close()
 
         # Call the ingest function
-        result = ingest_document(saved_path)
+        result = await run_in_threadpool(ingest_document, saved_path)
 
-        return {"success": True, "answer": "Document processed", "result": result}
+        return {"success": True, "message": "Document processed", "result": result}
     except Exception as e:
         logger.error(f"Error processing document: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -109,12 +132,19 @@ async def upload_file(file: UploadFile = File(...)):
 
 @app.post("/chat")
 async def chat(payload: QuestionPayload = Body(...)):
-    question = payload.question
+    """Chat with the document.
+
+    Args:
+        payload (QuestionPayload): The payload containing the question.
+
+    Returns:
+        dict: A dictionary containing the answer to the question.
+    """
     try:
         # Call the query function
-        result = query_rag(question)
+        answer = await run_in_threadpool(query_rag, payload.question)
 
-        answer_text = result if isinstance(result, str) else str(result)
+        answer_text = answer if isinstance(answer, str) else str(answer)
         return {"success": True, "answer": answer_text}
     except Exception as e:
         logger.error(f"Error processing document: {e}")
@@ -123,13 +153,35 @@ async def chat(payload: QuestionPayload = Body(...)):
 
 
 @app.post("/summarize")
-async def summarize(payload: QuestionPayload = Body(...)):
-    question = payload.question
+async def summarize(payload: SummaryPayload = Body(default={})):
     try:
-        # Call the query function
-        result = query_rag(question)
-        answer_text = result if isinstance(result, str) else str(result)
-        return {"success": True, "answer": answer_text}
+        if payload.focus_area:
+            prompt = f"Summarize the documents, focusing specifically on: {payload.focus_area}"
+        else:
+            prompt = "Provide a comprehensive summary of the key points in the provided documents. Use bullet points."
+
+        summary = await run_in_threadpool(query_rag, prompt)
+        return {"success": True, "answer": summary}
     except Exception as e:
-        logger.error(f"Error processing document: {e}")
-        return {"error": str(e)}
+        logger.error(f"Summarize error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/documents")
+def list_documents():
+    """Returns a list of uploaded filenames."""
+    if not os.path.exists(UPLOAD_DIR):
+        return []
+
+    # Get all PDF files in the upload directory
+    files = [f for f in os.listdir(UPLOAD_DIR) if f.endswith(".pdf")]
+
+    # Return them (you might want to return simple names, not the hashed ones)
+    # Here we try to return a cleaner list if you saved metadata,
+    # but for simplicity, let's just return the filenames on disk.
+    return {"documents": files}
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}

@@ -30,6 +30,9 @@ _cached_rag_chain = None
 def get_rag_chain():
     """
     Initialize the chain ONLY if it hasn't been initialized yet.
+
+    Returns:
+        RetrievalQA: The initialized RetrievalQA chain.
     """
     global _cached_rag_chain
 
@@ -43,15 +46,24 @@ def get_rag_chain():
         chroma_client = Chroma(
             persist_directory="data/chroma", embedding_function=embeddings
         )
-        retriever = chroma_client.as_retriever()
-        llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0.7)
+        retriever = chroma_client.as_retriever(
+            search_type="mmr", search_kwargs={"k": 5, "fetch_k": 20}
+        )
+
+        llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.3)
 
         prompt = PromptTemplate.from_template("""
-        Answer based on context: <context>{context}</context>
-        Question: {question}
-        """)
+            You are a smart assistant capable of analyzing documents and generating content.
+            Use the context provided below to answer the user's question.
 
-        # document_chain = create_stuff_documents_chain(llm, prompt)
+            Guidelines:
+            1. **Fact-Checking:** Use ONLY the facts found in the context.
+            2. **Generation:** If the user asks for a creative task, you are allowed to generate the structure and tone, but populate it strictly with the facts from the context.
+            3. **Missing Info:** If the context does not contain the specific details needed to answer the question (e.g., if asked for a phone number and none is listed), admit you cannot find that specific detail.
+        <context>{context}</context>
+        Question: {question}
+        Helpful Answer:
+        """)
 
         # Save to the global variable
         _cached_rag_chain = RetrievalQA.from_chain_type(
@@ -59,6 +71,7 @@ def get_rag_chain():
             chain_type="stuff",
             retriever=retriever,
             chain_type_kwargs={"prompt": prompt},
+            return_source_documents=True,
         )
 
         return _cached_rag_chain
@@ -71,6 +84,12 @@ def get_rag_chain():
 def query_rag(question_text: str):
     """
     The main function you call from your other scripts.
+
+    Args:
+        question_text (str): The question to ask the RAG system.
+
+    Returns:
+        str: The answer to the question.
     """
     # 2. Get the chain (loads it if needed, reuses it if ready)
     chain = get_rag_chain()
@@ -79,12 +98,7 @@ def query_rag(question_text: str):
         return "System failed to initialize."
 
     try:
-        # response = chain.invoke({"input": question_text})
-        # return response["answer"]
-
         response = chain.invoke({"query": question_text})
-        # response = chain.invoke({"question": question_text})
-        #
         return response["result"]
     except Exception as e:
         print(f"Error while querying RAG: {e}")
